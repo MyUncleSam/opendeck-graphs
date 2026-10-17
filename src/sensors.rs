@@ -3,13 +3,24 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 use std::sync::{LazyLock, Mutex, OnceLock};
+use std::time::{Duration, Instant};
 use sysinfo::{Components, Disks, MemoryRefreshKind, Networks, System};
 
 static PREV_CPU_STATS: Mutex<Option<(u64, u64)>> = Mutex::new(None);
 static PREV_DISK_WRITE: Mutex<Option<u64>> = Mutex::new(None);
 static PREV_DISK_READ: Mutex<Option<u64>> = Mutex::new(None);
-static PREV_NET_RX: LazyLock<Mutex<HashMap<String, u64>>> = LazyLock::new(Default::default);
-static PREV_NET_TX: LazyLock<Mutex<HashMap<String, u64>>> = LazyLock::new(Default::default);
+static PREV_NET_RX: LazyLock<Mutex<HashMap<String, NetSample>>> = LazyLock::new(Default::default);
+static PREV_NET_TX: LazyLock<Mutex<HashMap<String, NetSample>>> = LazyLock::new(Default::default);
+/// A previous network counter reading, remembered per button instance
+struct NetSample {
+    selection: String,
+    taken: Instant,
+    total: u64,
+}
+
+/// Readings older than this are discarded so a long gap does not show up as one huge spike
+const NET_SAMPLE_MAX_AGE: Duration = Duration::from_secs(10);
+
 static NVML: OnceLock<Option<nvml_wrapper::Nvml>> = OnceLock::new();
 static SYSINFO: Mutex<Option<System>> = Mutex::new(None);
 
@@ -339,28 +350,49 @@ fn sum_net_counter(selection: Option<&str>, counter: impl Fn(&sysinfo::NetworkDa
         .sum()
 }
 
-/// Turn a counter total into a MB/s delta, tracking the previous total per selection
-fn net_speed(prev: &Mutex<HashMap<String, u64>>, selection: Option<&str>, total: u64) -> f32 {
-    let key = selection.unwrap_or(NET_ALL).to_string();
+/// Turn a counter total into a MB/s delta, tracking the previous reading per button instance.
+/// A changed selection or a stale reading starts over instead of reporting a bogus delta.
+fn net_speed(
+    prev: &Mutex<HashMap<String, NetSample>>,
+    instance_id: &str,
+    selection: Option<&str>,
+    total: u64,
+) -> f32 {
+    let selection = selection.unwrap_or(NET_ALL);
+    let now = Instant::now();
     let mut prev = prev.lock().unwrap();
-    let speed = match prev.get(&key) {
-        Some(&prev_total) => (total.saturating_sub(prev_total) as f32) / 1_048_576.0, // Convert to MB/s
-        None => 0.0,
+
+    let speed = match prev.get(instance_id) {
+        Some(sample)
+            if sample.selection == selection
+                && now.duration_since(sample.taken) <= NET_SAMPLE_MAX_AGE =>
+        {
+            (total.saturating_sub(sample.total) as f32) / 1_048_576.0 // Convert to MB/s
+        }
+        _ => 0.0,
     };
-    prev.insert(key, total);
+
+    prev.insert(
+        instance_id.to_string(),
+        NetSample {
+            selection: selection.to_string(),
+            taken: now,
+            total,
+        },
+    );
     speed
 }
 
 /// Find network download speed in MB/s
-pub async fn find_net_download(selection: Option<&str>) -> Result<f32> {
+pub async fn find_net_download(instance_id: &str, selection: Option<&str>) -> Result<f32> {
     let total_rx = sum_net_counter(selection, |n| n.total_received());
-    Ok(net_speed(&PREV_NET_RX, selection, total_rx))
+    Ok(net_speed(&PREV_NET_RX, instance_id, selection, total_rx))
 }
 
 /// Find network upload speed in MB/s
-pub async fn find_net_upload(selection: Option<&str>) -> Result<f32> {
+pub async fn find_net_upload(instance_id: &str, selection: Option<&str>) -> Result<f32> {
     let total_tx = sum_net_counter(selection, |n| n.total_transmitted());
-    Ok(net_speed(&PREV_NET_TX, selection, total_tx))
+    Ok(net_speed(&PREV_NET_TX, instance_id, selection, total_tx))
 }
 
 /// Read a hwmon sysfs value as f32, dividing by 1000 (millidegrees → degrees, millivolts → volts)

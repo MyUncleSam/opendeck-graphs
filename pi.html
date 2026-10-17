@@ -77,6 +77,8 @@
 
                 let savedGpuCard = settings.gpu_card || "";
                 let savedNetInterface = settings.net_interface || "all";
+                ensureNetOption(savedNetInterface);
+                netInterface.value = savedNetInterface;
 
                 const initMessages = settings.websocket_init_messages || [];
                 renderInitMessages(initMessages);
@@ -93,6 +95,7 @@
                             gpuCard.value = savedGpuCard;
                         }
                         savedNetInterface = s.net_interface || "all";
+                        ensureNetOption(savedNetInterface);
                         netInterface.value = savedNetInterface;
                         renderInitMessages(s.websocket_init_messages || []);
                         refreshDynamicSections();
@@ -187,21 +190,31 @@
                     }
                 }
 
-                function populateNetList(interfaces, selected) {
+                function addNetOption(value, text) {
+                    const opt = document.createElement("option");
+                    opt.value = value;
+                    opt.textContent = text;
+                    netInterface.appendChild(opt);
+                }
+
+                // Keep a saved interface selectable even when it is not in the list (yet / anymore)
+                function ensureNetOption(value) {
+                    if (!value) return;
+                    const exists = Array.from(netInterface.options).some((o) => o.value === value);
+                    if (!exists) addNetOption(value, value + " (not found)");
+                }
+
+                function populateNetList(interfaces, saved) {
+                    // Prefer what is currently selected over the last saved value
+                    const selected = netInterface.value || saved || "all";
                     netInterface.innerHTML = "";
-                    const addOption = (value, text) => {
-                        const opt = document.createElement("option");
-                        opt.value = value;
-                        opt.textContent = text;
-                        netInterface.appendChild(opt);
-                    };
-                    addOption("all", "All interfaces");
-                    addOption("physical", "Physical interfaces only");
+                    addNetOption("all", "All interfaces");
+                    addNetOption("physical", "Physical interfaces only");
                     interfaces.forEach((iface) => {
-                        addOption(iface.name, iface.physical ? iface.name : iface.name + " (virtual)");
+                        addNetOption(iface.name, iface.physical ? iface.name : iface.name + " (virtual)");
                     });
-                    netInterface.value = selected || "all";
-                    if (!netInterface.value) netInterface.value = "all";
+                    ensureNetOption(selected);
+                    netInterface.value = selected;
                 }
 
                 function toggleDataSourceSections() {
