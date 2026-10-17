@@ -204,7 +204,7 @@ pub struct GraphSettings {
     // GPU selection
     pub gpu_card: Option<String>,
 
-    // Network interface selection ("all", "physical" or an interface name)
+    // Network interface selection ("physical" (default), "all" or an interface name)
     pub net_interface: Option<String>,
 
     // Memory display mode (percentage vs gigabytes)

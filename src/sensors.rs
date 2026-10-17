@@ -300,7 +300,7 @@ pub async fn find_disk_read() -> Result<f32> {
 
 /// Network interface selector value meaning "every interface except loopback"
 pub const NET_ALL: &str = "all";
-/// Network interface selector value meaning "physical interfaces only"
+/// Network interface selector value meaning "physical interfaces"
 pub const NET_PHYSICAL: &str = "physical";
 
 pub struct NetInterfaceInfo {
@@ -328,10 +328,10 @@ pub fn list_net_interfaces() -> Vec<NetInterfaceInfo> {
     interfaces
 }
 
-/// Sum a counter over the interfaces matching `selection` (None/"all", "physical" or an interface name)
+/// Sum a counter over the interfaces matching `selection` (None/"physical", "all" or an interface name)
 fn sum_net_counter(selection: Option<&str>, counter: impl Fn(&sysinfo::NetworkData) -> u64) -> u64 {
     let networks = Networks::new_with_refreshed_list();
-    let selection = selection.unwrap_or(NET_ALL);
+    let selection = selection.unwrap_or(NET_PHYSICAL);
 
     networks
         .iter()
@@ -358,7 +358,7 @@ fn net_speed(
     selection: Option<&str>,
     total: u64,
 ) -> f32 {
-    let selection = selection.unwrap_or(NET_ALL);
+    let selection = selection.unwrap_or(NET_PHYSICAL);
     let now = Instant::now();
     let mut prev = prev.lock().unwrap();
 
