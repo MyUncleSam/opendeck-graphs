@@ -70,8 +70,8 @@ async fn read_local_sensor_value(settings: &GraphSettings) -> Result<f32> {
                 MemoryDisplay::Gigabytes => sensors::find_ram_usage_gb().await,
             }
         }
-        MetricType::NetDownload => sensors::find_net_download().await,
-        MetricType::NetUpload => sensors::find_net_upload().await,
+        MetricType::NetDownload => sensors::find_net_download(settings.net_interface.as_deref()).await,
+        MetricType::NetUpload => sensors::find_net_upload(settings.net_interface.as_deref()).await,
         MetricType::RamTemp => sensors::find_ram_temperature().await,
     }
 }
@@ -133,6 +133,22 @@ impl Action for GraphAction {
             .send_to_property_inspector(serde_json::json!({
                 "event": "gpuList",
                 "gpus": gpu_list,
+            }))
+            .await;
+
+        let net_list: Vec<serde_json::Value> = sensors::list_net_interfaces()
+            .iter()
+            .map(|n| {
+                serde_json::json!({
+                    "name": n.name,
+                    "physical": n.physical,
+                })
+            })
+            .collect();
+        let _ = instance
+            .send_to_property_inspector(serde_json::json!({
+                "event": "netList",
+                "interfaces": net_list,
             }))
             .await;
         Ok(())

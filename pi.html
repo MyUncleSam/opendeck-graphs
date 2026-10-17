@@ -35,6 +35,8 @@
                 const ramDisplaySection = document.getElementById("ram_display_section");
                 const gpuCardSection = document.getElementById("gpu_card_section");
                 const gpuCard = document.getElementById("gpu_card");
+                const netInterfaceSection = document.getElementById("net_interface_section");
+                const netInterface = document.getElementById("net_interface");
                 const threshold = document.getElementById("threshold");
                 const maxValue = document.getElementById("max_value");
                 const minValue = document.getElementById("min_value");
@@ -74,6 +76,7 @@
                 applySettings(settings);
 
                 let savedGpuCard = settings.gpu_card || "";
+                let savedNetInterface = settings.net_interface || "all";
 
                 const initMessages = settings.websocket_init_messages || [];
                 renderInitMessages(initMessages);
@@ -89,12 +92,16 @@
                         if (gpuCard.options.length > 0) {
                             gpuCard.value = savedGpuCard;
                         }
+                        savedNetInterface = s.net_interface || "all";
+                        netInterface.value = savedNetInterface;
                         renderInitMessages(s.websocket_init_messages || []);
                         refreshDynamicSections();
                     } else if (data.event == "sendToPropertyInspector") {
                         const payload = data.payload || {};
                         if (payload.event === "gpuList") {
                             populateGpuList(payload.gpus || [], savedGpuCard);
+                        } else if (payload.event === "netList") {
+                            populateNetList(payload.interfaces || [], savedNetInterface);
                         }
                     }
                 };
@@ -152,6 +159,7 @@
                     toggleDataSourceSections();
                     toggleFanNumberSection();
                     toggleGpuCardSection();
+                    toggleNetInterfaceSection();
                     toggleVramDisplaySection();
                     toggleRamDisplaySection();
                     toggleGradientFields();
@@ -177,6 +185,23 @@
                     if (selectedCard) {
                         gpuCard.value = selectedCard;
                     }
+                }
+
+                function populateNetList(interfaces, selected) {
+                    netInterface.innerHTML = "";
+                    const addOption = (value, text) => {
+                        const opt = document.createElement("option");
+                        opt.value = value;
+                        opt.textContent = text;
+                        netInterface.appendChild(opt);
+                    };
+                    addOption("all", "All interfaces");
+                    addOption("physical", "Physical interfaces only");
+                    interfaces.forEach((iface) => {
+                        addOption(iface.name, iface.physical ? iface.name : iface.name + " (virtual)");
+                    });
+                    netInterface.value = selected || "all";
+                    if (!netInterface.value) netInterface.value = "all";
                 }
 
                 function toggleDataSourceSections() {
@@ -217,6 +242,14 @@
                         dataSource.value === "local" &&
                         ["gputemp", "gpuload", "gpuvram", "gpupower"].includes(metricType.value);
                     gpuCardSection.style.display = isGpuMetric ? "block" : "none";
+                }
+
+                function toggleNetInterfaceSection() {
+                    netInterfaceSection.style.display =
+                        dataSource.value === "local" &&
+                        ["netdownload", "netupload"].includes(metricType.value)
+                            ? "block"
+                            : "none";
                 }
 
                 function toggleGradientFields() {
@@ -347,6 +380,11 @@
                         if (["gputemp", "gpuload", "gpuvram", "gpupower"].includes(metricType.value)) {
                             if (gpuCard.value) {
                                 settings.gpu_card = gpuCard.value;
+                            }
+                        }
+                        if (["netdownload", "netupload"].includes(metricType.value)) {
+                            if (netInterface.value) {
+                                settings.net_interface = netInterface.value;
                             }
                         }
                     }
@@ -599,6 +637,14 @@
                         <label for="gpu_card">GPU:</label>
                         <select id="gpu_card" oninput="update();">
                             <option value="card0">card0 (default)</option>
+                        </select>
+                    </div>
+
+                    <div id="net_interface_section" class="field" style="display: none">
+                        <label for="net_interface">Network Interface:</label>
+                        <select id="net_interface" oninput="update();">
+                            <option value="all">All interfaces</option>
+                            <option value="physical">Physical interfaces only</option>
                         </select>
                     </div>
                 </div>
